@@ -15,6 +15,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Keep the server's own settings when deploying a new version -->
+    <Content Update="appsettings.json" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Bergdahl.ActiveDirectory.Core\Bergdahl.ActiveDirectory.Core.csproj" />
     <ProjectReference Include="..\Bergdahl.ActiveDirectory.Mock\Bergdahl.ActiveDirectory.Mock.csproj" />
   </ItemGroup>

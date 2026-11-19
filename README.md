@@ -82,7 +82,9 @@ You need to create a "Release" build of the application. Run the publish script 
 .\publish-windows.cmd
 ```
 
-It builds a framework-dependent `win-x64` Release build into `./publish`. Copy that folder to the server, for example to `C:\inetpub\ad-web`. To publish straight to a folder instead, run:
+It builds a framework-dependent `win-x64` Release build into `./publish`. Copy that folder to the server, for example to `C:\inetpub\ad-web`.
+
+`appsettings.json` is not included when you publish, so deploying a new version keeps the server's settings. On the first deployment, copy `src\Bergdahl.ActiveDirectory.Web\appsettings.json` to the site folder and edit it (see [Settings](#settings)). To publish straight to a folder instead, run:
 
 ```powershell
 dotnet publish src\Bergdahl.ActiveDirectory.Web\Bergdahl.ActiveDirectory.Web.csproj -c Release -r win-x64 --self-contained false -o C:\inetpub\ad-web
