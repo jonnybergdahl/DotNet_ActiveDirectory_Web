@@ -1,267 +1,163 @@
-﻿let allRecords = [];
-let currentSort = { field: 'hostName', asc: true };
+﻿// DNS records page: pick a zone, add A or CNAME records, list, filter, sort and delete.
+// Uses the helpers in site.js. ?zone=…&q=… preselects a zone and filter (used by the search).
 
-async function loadZones() {
-    const sel = document.getElementById('zone');
-    if (!sel) return;
-    sel.innerHTML = '<option>Loading...</option>';
-    try {
-        const res = await fetch('/api/dns/zones');
-        if (res.status === 401) {
-            window.location.href = '/login.html';
-            return;
-        }
-        if (!res.ok) throw new Error('Failed to load zones');
-        const zones = await res.json();
-        if (!Array.isArray(zones) || zones.length === 0) {
-            sel.innerHTML = '<option value="">No zones configured</option>';
-            return;
-        }
-        sel.innerHTML = zones.map(z => `<option value="${escapeHtml(z)}">${escapeHtml(z)}</option>`).join('');
-        await loadRecords();
-    } catch (e) {
-        sel.innerHTML = '<option value="">Failed to load zones</option>';
+(function () {
+  const zoneSelect = document.querySelector("[data-zone]");
+  const form = document.querySelector("[data-add-form]");
+  const typeSelect = document.querySelector("[data-record-type]");
+  const targetSelect = document.querySelector("[data-target-host]");
+  const filterInput = document.querySelector("[data-filter]");
+  const tbody = document.querySelector("[data-records]");
+  const countEl = document.querySelector("[data-count]");
+
+  const params = new URLSearchParams(location.search);
+  const sort = { field: "hostName", asc: true };
+  let records = [];
+
+  const ipToNumber = (ip) => (ip || "").split(".").reduce((acc, octet) => acc * 256 + (parseInt(octet, 10) || 0), 0);
+  const compare = {
+    ttl: (a, b) => a.ttl - b.ttl,
+    ipAddress: (a, b) => {
+      const ipA = /^\d+\.\d+\.\d+\.\d+$/.test(a.ipAddress);
+      const ipB = /^\d+\.\d+\.\d+\.\d+$/.test(b.ipAddress);
+      if (ipA && ipB) return ipToNumber(a.ipAddress) - ipToNumber(b.ipAddress);
+      if (ipA !== ipB) return ipA ? -1 : 1; // IPs before CNAME targets
+      return a.ipAddress.localeCompare(b.ipAddress);
+    },
+  };
+
+  async function loadZones() {
+    zoneSelect.replaceChildren(el("option", { value: "" }, "Loading…"));
+    const res = await api("GET", "/api/dns/zones");
+    const zones = res.ok && Array.isArray(res.data) ? res.data : [];
+    if (!zones.length) {
+      zoneSelect.replaceChildren(el("option", { value: "" }, res.ok ? "No zones configured" : "Failed to load zones"));
+      renderMessage(res.ok ? "No DNS zones are configured." : res.data.message);
+      return;
     }
-}
-
-async function loadRecords() {
-    const zoneEl = document.getElementById('zone');
-    if (!zoneEl) return;
-    const zone = zoneEl.value;
-    const tbody = document.getElementById('records');
-    if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading records...</td></tr>';
-
-    try {
-        const res = await fetch(`/api/dns/${zone}`);
-        if (res.status === 401) {
-            window.location.href = '/login.html';
-            return;
-        }
-        if (!res.ok) throw new Error('Failed to load');
-
-        allRecords = await res.json();
-        updateTargetHostDropdown();
-        renderRecords();
-    } catch (e) {
-        tbody.innerHTML = '<tr><td colspan="6" class="loading">Failed to load records</td></tr>';
-        showStatus('Failed to load records', true);
+    zoneSelect.replaceChildren(...zones.map((z) => el("option", { value: z }, z)));
+    const wanted = params.get("zone");
+    if (wanted && zones.some((z) => z.toLowerCase() === wanted.toLowerCase())) {
+      zoneSelect.value = zones.find((z) => z.toLowerCase() === wanted.toLowerCase());
     }
-}
+    if (params.has("q")) filterInput.value = params.get("q");
+    await loadRecords();
+  }
 
-function updateTargetHostDropdown() {
-    const sel = document.getElementById('targetHost');
-    if (!sel) return;
-    const currentValue = sel.value;
-    const hostRecords = allRecords.filter(r => r.recordType === 'A');
-    
-    sel.innerHTML = '<option value="">Select Target Host...</option>' + 
-        hostRecords.map(r => `<option value="${escapeHtml(r.hostName)}">${escapeHtml(r.hostName)}</option>`).join('');
-    
-    if (hostRecords.some(r => r.hostName === currentValue)) {
-        sel.value = currentValue;
+  async function loadRecords() {
+    const zone = zoneSelect.value;
+    if (!zone) return;
+    renderMessage("Loading records…");
+    const res = await api("GET", `/api/dns/${encodeURIComponent(zone)}`);
+    if (!res.ok) {
+      records = [];
+      renderMessage("Failed to load records.");
+      showStatus(res.data.message, true);
+      return;
     }
-}
+    records = res.data || [];
+    updateTargetHosts();
+    render();
+  }
 
-function renderRecords() {
-    const searchInput = document.getElementById('search');
-    if (!searchInput) return;
-    const search = searchInput.value.toLowerCase();
-    let filtered = allRecords.filter(r =>
-        r.hostName.toLowerCase().includes(search) ||
-        (r.ipAddress || '').toLowerCase().includes(search)
-    );
+  function renderMessage(message) {
+    countEl.textContent = "";
+    tbody.replaceChildren(emptyRow(5, message));
+  }
 
-    // Sort
-    filtered.sort((a, b) => {
-        let valA = a[currentSort.field];
-        let valB = b[currentSort.field];
+  function updateTargetHosts() {
+    const current = targetSelect.value;
+    const hosts = records.filter((r) => r.recordType === "A").map((r) => r.hostName).sort();
+    targetSelect.replaceChildren(
+      el("option", { value: "" }, "Select a host…"),
+      ...hosts.map((h) => el("option", { value: h }, h)));
+    if (hosts.includes(current)) targetSelect.value = current;
+  }
 
-        if (currentSort.field === 'ttl') {
-            return currentSort.asc ? valA - valB : valB - valA;
-        }
-        if (currentSort.field === 'ipAddress') {
-            // Sort IPs numerically
-            const numA = (valA || '').split('.').reduce((acc, oct) => acc * 256 + (parseInt(oct) || 0), 0);
-            const numB = (valB || '').split('.').reduce((acc, oct) => acc * 256 + (parseInt(oct) || 0), 0);
-            return currentSort.asc ? numA - numB : numB - numA;
-        }
-        return currentSort.asc
-            ? (valA || '').localeCompare(valB || '')
-            : (valB || '').localeCompare(valA || '');
-    });
+  function render() {
+    const q = filterInput.value.trim().toLowerCase();
+    const filtered = records.filter((r) =>
+      r.hostName.toLowerCase().includes(q) || (r.ipAddress || "").toLowerCase().includes(q));
+    const rows = sortRows(filtered, sort, compare);
 
-    const countEl = document.getElementById('recordCount');
-    if (countEl) {
-        countEl.textContent = `Showing ${filtered.length} of ${allRecords.length} records`;
+    countEl.textContent = q ? `${rows.length} of ${records.length}` : `${records.length}`;
+
+    if (!rows.length) {
+      tbody.replaceChildren(emptyRow(5, records.length ? "No records match the filter." : "No records in this zone."));
+      return;
     }
 
-    // Update sort arrows
-    document.querySelectorAll('.sort-arrow').forEach(el => el.textContent = '');
-    const arrow = document.getElementById(`sort-${currentSort.field}`);
-    if (arrow) arrow.textContent = currentSort.asc ? '▲' : '▼';
+    tbody.replaceChildren(...rows.map((r) => el("tr", null,
+      el("td", null, r.hostName),
+      el("td", null, r.recordType),
+      el("td", null, r.ipAddress),
+      el("td", { className: "num" }, r.ttl),
+      el("td", { className: "actions" },
+        iconButton("delete", `Delete ${r.hostName}`, () => removeRecord(r), "danger")))));
+  }
 
-    const tbody = document.getElementById('records');
-    if (!tbody) return;
-    if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="loading">No records found</td></tr>';
-        return;
+  function showFieldsForType() {
+    for (const field of form.querySelectorAll("[data-for-type]")) {
+      field.hidden = field.dataset.forType !== typeSelect.value;
+    }
+  }
+
+  async function addRecord(e) {
+    e.preventDefault();
+    const zone = zoneSelect.value;
+    const type = typeSelect.value;
+    const name = form.elements.name.value.trim();
+    const ip = form.elements.ip.value.trim();
+    const target = targetSelect.value;
+
+    if (!zone) return showStatus("Select a zone first.", true);
+    if (!/^[a-zA-Z0-9\-._]{1,255}$/.test(name)) {
+      form.elements.name.focus();
+      return showStatus("Enter a valid name (letters, digits, - . _).", true);
     }
 
-    tbody.innerHTML = filtered.map((r, i) => `
-            <tr>
-                <td>${i + 1}</td>
-                <td>${escapeHtml(r.hostName)}</td>
-                <td>${escapeHtml(r.recordType)}</td>
-                <td>${escapeHtml(r.ipAddress)}</td>
-                <td>${r.ttl}</td>
-                <td><button class="danger" onclick="removeRecord('${escapeHtml(r.hostName)}')">Delete</button></td>
-            </tr>
-        `).join('');
-}
-
-function sortTable(field) {
-    if (currentSort.field === field) {
-        currentSort.asc = !currentSort.asc;
+    let res;
+    if (type === "A") {
+      if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) {
+        form.elements.ip.focus();
+        return showStatus("Enter an IPv4 address, for example 10.0.0.50.", true);
+      }
+      res = await api("POST", "/api/dns", { zone, hostname: name, ipAddress: ip });
     } else {
-        currentSort.field = field;
-        currentSort.asc = true;
-    }
-    renderRecords();
-}
-
-function filterRecords() {
-    renderRecords();
-}
-
-async function addRecord() {
-    const zone = document.getElementById('zone').value;
-    const hostname = document.getElementById('hostname').value.trim();
-    const ip = document.getElementById('ip').value.trim();
-
-    if (!hostname || !ip) {
-        showStatus('Please enter both hostname and IP address', true);
-        return;
+      if (!target) {
+        targetSelect.focus();
+        return showStatus("Select a target host.", true);
+      }
+      res = await api("POST", "/api/dns/cname", { zone, aliasName: name, targetHost: target });
     }
 
-    // Basic validation
-    if (!/^[a-zA-Z0-9\-\._]{1,255}$/.test(hostname)) {
-        showStatus('Invalid hostname.', true);
-        return;
-    }
-    if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) {
-        showStatus('Invalid IP address format', true);
-        return;
-    }
+    if (!res.ok) return showStatus(res.data.message || "Could not add the record.", true);
+    showStatus(res.data.message);
+    if (res.data.warning) showStatus(res.data.warning, true);
+    form.elements.name.value = "";
+    form.elements.ip.value = "";
+    targetSelect.value = "";
+    form.elements.name.focus();
+    loadRecords();
+  }
 
-    try {
-        const res = await fetch('/api/dns', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'X-XSRF-TOKEN': sessionStorage.getItem('csrf') || ''
-            },
-            body: JSON.stringify({ zone, hostname, ipAddress: ip })
-        });
-        let data;
-        try {
-            data = await res.json();
-        } catch (jsonErr) {
-            // Handle non-JSON response
-            const text = await res.text();
-            data = { message: text || res.statusText };
-        }
+  async function removeRecord(record) {
+    const ok = await confirmAction("Delete record", `Delete ${record.hostName} (${record.recordType})?`, "Delete");
+    if (!ok) return;
+    const res = await api("DELETE", "/api/dns", { zone: zoneSelect.value, hostname: record.hostName });
+    if (!res.ok) return showStatus(res.data.message || "Could not delete the record.", true);
+    showStatus(res.data.message);
+    if (res.data.warning) showStatus(res.data.warning, true);
+    loadRecords();
+  }
 
-        if (res.ok) {
-            showStatus(data.message, false);
-            document.getElementById('hostname').value = '';
-            document.getElementById('ip').value = '';
-            loadRecords();
-        } else {
-            showStatus(data.message || 'Error adding record', true);
-        }
-    } catch (e) {
-        showStatus('Network error', true);
-    }
-}
+  initSortHeaders(sort, render);
+  zoneSelect.addEventListener("change", loadRecords);
+  document.querySelector("[data-refresh]").addEventListener("click", loadRecords);
+  filterInput.addEventListener("input", render);
+  typeSelect.addEventListener("change", showFieldsForType);
+  form.addEventListener("submit", addRecord);
 
-async function addCnameRecord() {
-    const zone = document.getElementById('zone').value;
-    const aliasName = document.getElementById('aliasName').value.trim();
-    const targetHost = document.getElementById('targetHost').value;
-
-    if (!aliasName || !targetHost) {
-        showStatus('Please enter both alias name and select a target host', true);
-        return;
-    }
-
-    if (!/^[a-zA-Z0-9\-\._]{1,255}$/.test(aliasName)) {
-        showStatus('Invalid alias name.', true);
-        return;
-    }
-
-    try {
-        const res = await fetch('/api/dns/cname', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'X-XSRF-TOKEN': sessionStorage.getItem('csrf') || ''
-            },
-            body: JSON.stringify({ zone, aliasName, targetHost })
-        });
-        let data;
-        try {
-            data = await res.json();
-        } catch (jsonErr) {
-            const text = await res.text();
-            data = { message: text || res.statusText };
-        }
-
-        if (res.ok) {
-            showStatus(data.message, false);
-            document.getElementById('aliasName').value = '';
-            document.getElementById('targetHost').value = '';
-            loadRecords();
-        } else {
-            showStatus(data.message || 'Error adding alias record', true);
-        }
-    } catch (e) {
-        showStatus('Network error', true);
-    }
-}
-
-async function removeRecord(hostname) {
-    openConfirmModal('Delete Record', `Are you sure you want to delete ${hostname}?`, async () => {
-        const zone = document.getElementById('zone').value;
-
-        try {
-            const res = await fetch('/api/dns', {
-                method: 'DELETE',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'X-XSRF-TOKEN': sessionStorage.getItem('csrf') || ''
-                },
-                body: JSON.stringify({ zone, hostname })
-            });
-            let data;
-            try {
-                data = await res.json();
-            } catch (jsonErr) {
-                const text = await res.text();
-                data = { message: text || res.statusText };
-            }
-
-            if (res.ok) {
-                showStatus(data.message, false);
-                loadRecords();
-            } else {
-                showStatus(data.message || 'Error deleting record', true);
-            }
-        } catch (e) {
-            showStatus('Network error', true);
-        }
-    });
-}
-
-// Initial load
-document.addEventListener('DOMContentLoaded', loadZones);
+  showFieldsForType();
+  loadZones();
+})();

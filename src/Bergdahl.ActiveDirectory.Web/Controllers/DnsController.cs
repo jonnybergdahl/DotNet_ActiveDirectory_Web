@@ -50,14 +50,17 @@ public class DnsController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(req.Zone))
             return BadRequest(new { message = "Invalid zone" });
-        if (!IsValidHostname(req.Hostname) || !System.Net.IPAddress.TryParse(req.IpAddress, out _))
+        if (!IsValidHostname(req.Hostname) || !IsValidIPv4(req.IpAddress))
             return BadRequest(new { message = "Invalid input" });
 
         try
         {
             var (user, pass, domain) = GetCredentials();
-            _dns.AddRecord(req.Zone, req.Hostname, req.IpAddress, user, pass, domain);
-            return Ok(new { message = $"Added {req.Hostname}.{req.Zone} -> {req.IpAddress}" });
+            var result = _dns.AddRecord(req.Zone, req.Hostname, req.IpAddress, user, pass, domain);
+            var message = $"Added {req.Hostname}.{req.Zone} -> {req.IpAddress}";
+            if (result.PtrCreated)
+                message += $" (PTR record in {result.ReverseZone})";
+            return Ok(new { message, warning = result.PtrWarning });
         }
         catch (Exception ex)
         {
@@ -98,10 +101,13 @@ public class DnsController : ControllerBase
         try
         {
             var (user, pass, domain) = GetCredentials();
-            var deleted = _dns.RemoveRecord(req.Zone, req.Hostname, user, pass, domain);
-            if (deleted)
+            var result = _dns.RemoveRecord(req.Zone, req.Hostname, user, pass, domain);
+            if (result.Deleted)
             {
-                return Ok(new { message = $"Deleted {req.Hostname}.{req.Zone}" });
+                var message = $"Deleted {req.Hostname}.{req.Zone}";
+                if (result.PtrDeleted > 0)
+                    message += result.PtrDeleted == 1 ? " and its PTR record" : $" and {result.PtrDeleted} PTR records";
+                return Ok(new { message, warning = result.PtrWarning });
             }
             else
             {
@@ -113,6 +119,14 @@ public class DnsController : ControllerBase
             return BadRequest(new { message = ex.Message });
         }
     }
+
+    // A records (and their PTR records) need a full dotted IPv4 address; IPAddress.TryParse
+    // alone also accepts IPv6 and short forms like "10.1".
+    private static bool IsValidIPv4([NotNullWhen(true)] string? ip) =>
+        ip != null &&
+        System.Text.RegularExpressions.Regex.IsMatch(ip, @"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$") &&
+        System.Net.IPAddress.TryParse(ip, out var addr) &&
+        addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork;
 
     private bool IsValidHostname([NotNullWhen(true)] string? name) =>
         System.Text.RegularExpressions.Regex.IsMatch(name ?? "", @"^[a-zA-Z0-9\-\._]{1,255}$");

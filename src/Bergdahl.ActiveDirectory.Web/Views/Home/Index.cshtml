@@ -1,54 +1,89 @@
 ﻿@{
-    ViewData["Title"] = "DNS Management";
+    ViewData["Title"] = "DNS records";
     ViewData["ActivePage"] = "DNS";
 }
 
-<h1>DNS Record Manager</h1>
+<header class="page-header">
+    <h1>DNS records</h1>
+    <p>Host (A) and alias (CNAME) records in a zone. Host records get a PTR record in the matching reverse zone.</p>
+</header>
 
-<div class="controls">
-    <label><strong>Zone:</strong></label>
-    <select id="zone" onchange="loadRecords()"></select>
-    <button class="primary" onclick="loadRecords()">Refresh</button>
+<div class="toolbar">
+    <label class="field">
+        <span>Zone</span>
+        <span class="select">
+            <select id="zone" data-zone></select>
+        </span>
+    </label>
+    <button class="icon-button" type="button" data-refresh aria-label="Reload records" title="Reload records">
+        <span class="icon">refresh</span>
+    </button>
 </div>
 
-<h3>Add New Host Record</h3>
-<div class="add-form">
-    <input id="hostname" placeholder="Hostname (e.g. webserver01)">
-    <input id="ip" placeholder="IP Address (e.g. 10.0.0.50)">
-    <button class="primary" onclick="addRecord()">Add Record</button>
-</div>
+<form class="card" data-add-form novalidate>
+    <header class="card-header"><span class="icon">add_circle</span><h2>Add record</h2></header>
+    <div class="form-grid">
+        <label class="field">
+            <span>Type</span>
+            <span class="select">
+                <select name="type" data-record-type>
+                    <option value="A" selected>Host (A)</option>
+                    <option value="CNAME">Alias (CNAME)</option>
+                </select>
+            </span>
+        </label>
+        <label class="field">
+            <span>Name</span>
+            <input name="name" type="text" autocomplete="off" spellcheck="false" required>
+            <small class="field-hint">For example webserver01. The zone is added for you.</small>
+        </label>
+        <label class="field" data-for-type="A">
+            <span>IP address</span>
+            <input name="ip" type="text" inputmode="decimal" autocomplete="off" spellcheck="false">
+            <small class="field-hint">IPv4, for example 10.0.0.50.</small>
+        </label>
+        <label class="field" data-for-type="CNAME" hidden>
+            <span>Target host</span>
+            <span class="select">
+                <select name="target" data-target-host>
+                    <option value="">Select a host…</option>
+                </select>
+            </span>
+            <small class="field-hint">A host record in this zone.</small>
+        </label>
+    </div>
+    <div class="form-actions">
+        <button class="button" type="submit"><span class="icon">add</span>Add record</button>
+    </div>
+</form>
 
-<h3>Add New Alias (CNAME) Record</h3>
-<div class="add-form">
-    <input id="aliasName" placeholder="Alias (e.g. blog)">
-    <select id="targetHost">
-        <option value="">Select Target Host...</option>
-    </select>
-    <button class="primary" onclick="addCnameRecord()">Add Alias</button>
+<div class="card">
+    <header class="card-header">
+        <span class="icon">dns</span><h2>Records</h2>
+        <span class="card-header-end" data-count></span>
+    </header>
+    <label class="field card-filter">
+        <span>Filter</span>
+        <input type="search" data-filter autocomplete="off" spellcheck="false">
+    </label>
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+            <tr>
+                <th data-sort="hostName"><button class="sort" type="button">Name<span class="icon">arrow_upward</span></button></th>
+                <th data-sort="recordType"><button class="sort" type="button">Type<span class="icon">arrow_upward</span></button></th>
+                <th data-sort="ipAddress"><button class="sort" type="button">IP address / target<span class="icon">arrow_upward</span></button></th>
+                <th data-sort="ttl" class="num"><button class="sort" type="button">TTL<span class="icon">arrow_upward</span></button></th>
+                <th class="actions"><span class="visually-hidden">Actions</span></th>
+            </tr>
+            </thead>
+            <tbody data-records>
+            <tr class="empty"><td colspan="5">Loading records…</td></tr>
+            </tbody>
+        </table>
+    </div>
 </div>
-
-<h3>Assigned Hosts</h3>
-<div class="search-box">
-    <input id="search" placeholder="Filter records..." oninput="filterRecords()">
-</div>
-<div id="recordCount" class="record-count"></div>
-
-<table>
-    <thead>
-    <tr>
-        <th onclick="sortTable('hostName')"># <span class="sort-arrow"></span></th>
-        <th onclick="sortTable('hostName')">Hostname <span class="sort-arrow" id="sort-hostName"></span></th>
-        <th onclick="sortTable('recordType')">Type <span class="sort-arrow" id="sort-recordType"></span></th>
-        <th onclick="sortTable('ipAddress')">IP Address / Target <span class="sort-arrow" id="sort-ipAddress"></span></th>
-        <th onclick="sortTable('ttl')">TTL <span class="sort-arrow" id="sort-ttl"></span></th>
-        <th>Action</th>
-    </tr>
-    </thead>
-    <tbody id="records">
-    <tr><td colspan="6" class="loading">Loading records...</td></tr>
-    </tbody>
-</table>
 
 @section Scripts {
-    <script src="/js/dns.js"></script>
+    <script src="/js/dns.js" defer></script>
 }

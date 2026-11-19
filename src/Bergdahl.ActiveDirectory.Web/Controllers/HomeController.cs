@@ -28,4 +28,11 @@ public class HomeController : Controller
     {
         return View();
     }
+
+    // Reached from the account menu, not the left menu
+    [HttpGet("account")]
+    public IActionResult Account()
+    {
+        return View();
+    }
 }

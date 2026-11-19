@@ -1,54 +1,41 @@
-﻿function showStatus(msg, isError) {
-    const container = document.getElementById('status-container');
-    const toast = document.createElement('div');
-    toast.className = `toast ${isError ? 'error' : 'success'}`;
-    
-    const text = document.createElement('span');
-    text.textContent = msg;
-    
-    const close = document.createElement('span');
-    close.className = 'toast-close';
-    close.innerHTML = '&times;';
-    close.onclick = () => toast.remove();
-    
-    toast.appendChild(text);
-    toast.appendChild(close);
-    container.appendChild(toast);
-    
-    setTimeout(() => {
-        if (toast.parentElement) {
-            toast.style.opacity = '0';
-            toast.style.transition = 'opacity 0.5s ease';
-            setTimeout(() => toast.remove(), 500);
-        }
-    }, 5000);
-}
+﻿// Sign-in form. The server checks the credentials against Active Directory.
 
-async function login() {
-    const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            username: document.getElementById('username').value,
-            password: document.getElementById('password').value
-        })
-    });
-    if (res.ok) {
-        const data = await res.json();
-        sessionStorage.setItem('csrf', data.csrf);
-        sessionStorage.setItem('username', data.user);
-        window.location.href = '/';
-    } else {
-        const data = await res.json();
-        showStatus(data.message || 'Login failed', true);
-    }
-}
+(function () {
+  const form = document.querySelector("[data-login-form]");
+  const error = document.querySelector("[data-login-error]");
+  const button = form.querySelector("button[type='submit']");
 
-document.addEventListener('DOMContentLoaded', () => {
-    const passwordInput = document.getElementById('password');
-    if (passwordInput) {
-        passwordInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') login();
-        });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const username = form.elements.username.value.trim();
+    const password = form.elements.password.value;
+
+    if (!username) {
+      error.textContent = "Enter a user name.";
+      form.elements.username.focus();
+      return;
     }
-});
+    error.textContent = "";
+    button.disabled = true;
+
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        sessionStorage.setItem("csrf", data.csrf);
+        location.href = "/";
+        return;
+      }
+      error.textContent = data.message || "Sign-in failed.";
+      form.elements.password.select();
+    } catch {
+      error.textContent = "Could not reach the server.";
+    } finally {
+      button.disabled = false;
+    }
+  });
+})();

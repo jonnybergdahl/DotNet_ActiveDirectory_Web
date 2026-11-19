@@ -1,72 +1,361 @@
-﻿body { font-family: Arial, sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh; }
-header { background: #4da3ff; color: white; height: 50px; border-top: 5px solid #0056b3; border-bottom: 5px solid #0056b3; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; }
-.header-title { font-size: 20px; font-weight: bold; }
-.profile-dropdown { position: relative; display: inline-block; }
-.profile-icon { font-size: 24px; cursor: pointer; background: rgba(255,255,255,0.2); border-radius: 50%; width: 40px; height: 40px; display: flex; justify-content: center; align-items: center; user-select: none; }
-.dropdown-content { display: none; position: absolute; right: 0; background-color: #f9f9f9; min-width: 120px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); z-index: 10; border-radius: 4px; }
-.dropdown-content a { color: black; padding: 12px 16px; text-decoration: none; display: block; font-size: 14px; border-radius: 4px; }
-.dropdown-content a:hover { background-color: #f1f1f1; }
-.show { display: block; }
+﻿/*
+ * App-specific components on top of the template's app.css.
+ * Uses tokens from theme.css only, like app.css.
+ */
 
-.main-container { display: flex; flex: 1; }
+/* ---------- Page toolbar: the zone / OU picker above the cards ---------- */
 
-.sidebar { width: 200px; background: #f4f4f4; border-right: 1px solid #ddd; padding: 20px 0; }
-.sidebar a { display: block; padding: 10px 20px; color: #333; text-decoration: none; font-size: 16px; }
-.sidebar a:hover { background: #e9e9e9; }
-.sidebar a.active { background: #4da3ff; color: white; font-weight: bold; }
+.toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
 
-.content { flex: 1; padding: 20px; max-width: 900px; }
-h1 { color: #333; margin-top: 0; }
+.toolbar .field {
+  flex: 1;
+  max-width: 420px;
+}
 
-.controls { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
-.add-form { display: flex; gap: 10px; align-items: center; margin-bottom: 20px;
-    padding: 15px; background: #f8f9fa; border-radius: 6px; }
+/* ---------- Helpers ---------- */
 
-input, select { padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
-input:focus { outline: none; border-color: #4da3ff; }
+/* .field sets display:flex, which would otherwise override the hidden attribute */
+.field[hidden] {
+  display: none;
+}
 
-button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
-.primary { background: #0d6efd; color: white; }
-.primary:hover { background: #0b5ed7; }
-.danger { background: #dc3545; color: white; }
-.danger:hover { background: #bb2d3b; }
-.secondary { background: #6c757d; color: white; }
-.secondary:hover { background: #5c636a; }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-th { background: #333; color: white; padding: 10px 12px; text-align: left; cursor: pointer; user-select: none; }
-th:hover { background: #555; }
-th .sort-arrow { margin-left: 5px; font-size: 10px; }
-td { border-bottom: 1px solid #e0e0e0; padding: 10px 12px; }
-tr:hover { background: #f5f5f5; }
+/* Form grid with exactly two columns (pairs like first/last name), one column on phones */
+.form-grid.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 
-.record-count, .item-count { color: #666; margin: 10px 0; }
-.search-box { margin-bottom: 10px; }
-.search-box input { width: 300px; }
+@media (max-width: 560px) {
+  .form-grid.cols-2 {
+    grid-template-columns: 1fr;
+  }
+}
 
-.action-buttons { display: flex; gap: 5px; }
+/* Save/Add row at the end of a form card */
+.card > .form-actions {
+  margin-top: var(--space-5);
+}
 
-/* Modal styles */
-.modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.4); }
-.modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 400px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-.modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
-.modal-header h3 { margin: 0; }
-.modal-close { cursor: pointer; font-size: 24px; font-weight: bold; }
-.modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+/* ---------- Card header with something on the right (count, filter) ---------- */
 
-#status-container { position: fixed; top: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
-.toast { padding: 12px 20px; border-radius: 4px; color: white; min-width: 250px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; justify-content: space-between; align-items: center; animation: slideIn 0.3s ease-out; }
-.toast.success { background: #28a745; }
-.toast.error { background: #dc3545; }
-.toast.info { background: #17a2b8; }
-.toast-close { cursor: pointer; margin-left: 10px; font-weight: bold; opacity: 0.8; }
-.toast-close:hover { opacity: 1; }
-@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.card-header .card-header-end {
+  margin-left: auto;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
 
-footer { background: #4da3ff; color: white; padding: 20px; text-align: center; font-size: 14px; width: 100%; box-sizing: border-box; }
-footer a { color: white; text-decoration: underline; }
+.card-filter {
+  margin-bottom: var(--space-3);
+  max-width: 320px;
+}
 
-/* User management specific tags */
-.selected-groups { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
-.group-tag { background: #e2e3e5; padding: 4px 8px; border-radius: 12px; font-size: 12px; display: flex; align-items: center; gap: 5px; }
-.group-tag .remove { cursor: pointer; color: #dc3545; font-weight: bold; }
+/* ---------- Buttons ---------- */
+
+/* Destructive action in a confirm dialog. Same text colour rules as the primary button. */
+.button.danger {
+  background: var(--color-error);
+  color: var(--color-on-primary);
+}
+
+.button.danger:hover {
+  background: var(--color-error);
+  filter: brightness(0.92);
+}
+
+.button[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.icon-button.danger:hover {
+  color: var(--color-error);
+}
+
+.icon-button.small {
+  width: 32px;
+  height: 32px;
+}
+
+.icon-button.small .icon {
+  font-size: 18px;
+}
+
+/* ---------- Tables ---------- */
+
+/* Sortable column header: a real button inside <th> */
+.table th .sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Right-aligned number columns: arrow on the left so the label lines up with the numbers */
+.table th.num .sort {
+  flex-direction: row-reverse;
+}
+
+.table th .sort:hover,
+.table th[aria-sort] .sort {
+  color: var(--color-text);
+}
+
+.table th .sort .icon {
+  font-size: 16px;
+  visibility: hidden;
+}
+
+.table th[aria-sort] .sort .icon {
+  visibility: visible;
+}
+
+.table th .sort:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Row action icons, right-aligned */
+.table td.actions,
+.table th.actions {
+  position: relative; /* keeps the visually hidden header label inside the scrolling table */
+  text-align: right;
+  width: 1%;
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+
+.table td.actions .icon-button {
+  width: 34px;
+  height: 34px;
+}
+
+.table td.actions .icon-button .icon {
+  font-size: 20px;
+}
+
+.table tr.empty td {
+  padding: var(--space-5) var(--space-3);
+  text-align: center;
+  color: var(--color-text-muted);
+  white-space: normal;
+}
+
+.table tr.empty:hover {
+  background: transparent;
+}
+
+/* ---------- Chips (groups picked for a new user) ---------- */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chips:empty {
+  display: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 2px 2px var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  font-size: 0.85rem;
+}
+
+.chip .icon-button {
+  width: 24px;
+  height: 24px;
+}
+
+.chip .icon-button .icon {
+  font-size: 16px;
+}
+
+/* A field and a button side by side (group picker) */
+.field-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.field-row .field {
+  flex: 1;
+}
+
+.field-row .button {
+  height: 40px;
+}
+
+/* ---------- Dialogs (native <dialog>) ---------- */
+
+.dialog {
+  width: min(440px, calc(100vw - 2 * var(--space-4)));
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-drawer);
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 0.35);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5);
+  background: var(--color-surface-alt);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dialog-header h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.dialog-header .icon-button {
+  margin-left: auto;
+}
+
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.dialog-body p {
+  margin: 0;
+}
+
+.dialog-body h3 {
+  margin: 0 0 var(--space-2);
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.dialog .form-actions {
+  justify-content: flex-end;
+  padding: 0 var(--space-5) var(--space-5);
+}
+
+/* Group memberships inside the groups dialog */
+.member-list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.member-list li {
+  align-items: center;
+  padding: var(--space-1) 0;
+}
+
+.member-list li:first-child {
+  padding-top: 0;
+}
+
+.member-list li > span:last-child {
+  flex: 1;
+}
+
+.member-list .icon-button {
+  margin-left: auto;
+}
+
+/* ---------- Toasts ---------- */
+
+.toasts {
+  position: fixed;
+  right: var(--space-4);
+  bottom: calc(var(--footer-height) + var(--space-4));
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: min(420px, calc(100vw - 2 * var(--space-4)));
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-drawer);
+  transition: opacity var(--transition);
+}
+
+.toast > .icon {
+  color: var(--color-accent);
+  margin-top: 1px;
+}
+
+.toast.error > .icon {
+  color: var(--color-error);
+}
+
+.toast span:nth-child(2) {
+  flex: 1;
+  padding-top: 2px;
+}
+
+.toast .icon-button {
+  width: 28px;
+  height: 28px;
+}
+
+.toast .icon-button .icon {
+  font-size: 18px;
+}
+
+.toast.leaving {
+  opacity: 0;
+}
+
+/* Login page: errors from the server */
+.login-card .field-error:empty {
+  display: none;
+}
+
+@media (max-width: 560px) {
+  .toolbar {
+    flex-wrap: wrap;
+  }
+
+  .toolbar .field {
+    max-width: none;
+  }
+}

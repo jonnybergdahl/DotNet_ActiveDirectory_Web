@@ -1,4 +1,4 @@
-# Windows Active Directory Web
+# Active Directory Web
 
 A web-based interface for managing Active Directory DNS records and Users.
 
@@ -8,8 +8,8 @@ The application provides a centralized web interface to perform common Active Di
 
 ### DNS Management
 - **List Records**: View all A-type (Host) records for a specific DNS zone.
-- **Add Records**: Create new A-type records by providing a hostname and IP address.
-- **Remove Records**: Delete existing DNS records.
+- **Add Records**: Create new A-type records by providing a hostname and IP address. The associated PTR record is always created in the matching reverse lookup zone (like the "Create associated pointer (PTR) record" option in DNS Manager). If no reverse lookup zone covers the IP address, the A record is still created and a warning is shown.
+- **Remove Records**: Delete existing DNS records. Deleting an A record also deletes the PTR records that point at that host. PTR records for the same IP address that point at other hosts are kept.
 - **Filtering & Sorting**: Search through records and sort them by hostname, IP address, or TTL.
 
 ### User Management
@@ -18,6 +18,10 @@ The application provides a centralized web interface to perform common Active Di
 - **Remove User**: Delete a user account from Active Directory.
 - **Group Membership**: Add or remove users from Active Directory groups (e.g., Domain Admins, IT Department).
 - **Group Selection**: Browse and select from existing groups using a dynamic dropdown.
+
+### Interface
+- **Layout**: Built on the [Bergdahl web app template](https://github.com/jonnybergdahl/Web_Bergdahl_Template): top bar, left menu, light and dark themes (follows the OS, with a toggle), and a layout that works on phones.
+- **Search**: The top bar search (Ctrl/⌘ K) finds hosts in all configured DNS zones and users in all configured OUs, and opens them with the right zone or OU selected.
 
 ### Security & Architecture
 - **Authentication**: Secure login using Active Directory credentials.

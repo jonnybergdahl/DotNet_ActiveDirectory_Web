@@ -1,402 +1,245 @@
-﻿let allUsers = [];
-let selectedGroupsForNewUser = [];
-let userSort = { field: 'userLoginName', asc: true };
+﻿// Users page: pick an OU, create users, list, filter, sort, change passwords,
+// manage group memberships and delete. Uses the helpers in site.js.
+// ?path=…&q=… preselects an OU and filter (used by the search).
 
-async function loadUserPaths() {
-    const sel = document.getElementById('um-adpath');
-    if (!sel) return;
-    try {
-        const res = await fetch('/api/users/paths');
-        if (res.status === 401) {
-            window.location.href = '/login.html';
-            return;
-        }
-        if (!res.ok) throw new Error('Failed to load user paths');
-        const paths = await res.json();
-        if (!Array.isArray(paths) || paths.length === 0) {
-            sel.innerHTML = '<option value="">No paths configured</option>';
-            return;
-        }
-        sel.innerHTML = paths.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
-        loadUsers();
-    } catch (e) {
-        sel.innerHTML = '<option value="">Failed to load paths</option>';
+(function () {
+  const pathSelect = document.querySelector("[data-adpath]");
+  const createForm = document.querySelector("[data-create-form]");
+  const newUserGroupSelect = document.querySelector("[data-new-user-group]");
+  const newUserGroupsList = document.querySelector("[data-new-user-groups]");
+  const filterInput = document.querySelector("[data-filter]");
+  const tbody = document.querySelector("[data-users]");
+  const countEl = document.querySelector("[data-count]");
+
+  const passwordForm = document.querySelector("[data-password-form]");
+  const passwordError = document.querySelector("[data-password-error]");
+  const memberList = document.querySelector("[data-member-list]");
+  const memberGroupSelect = document.querySelector("[data-member-group]");
+  const addMemberForm = document.querySelector("[data-add-member-form]");
+
+  const params = new URLSearchParams(location.search);
+  const sort = { field: "userLoginName", asc: true };
+  let users = [];
+  let newUserGroups = [];
+  let passwordUser = "";
+  let groupsUser = "";
+
+  // ---------- OUs and users ----------
+
+  async function loadPaths() {
+    pathSelect.replaceChildren(el("option", { value: "" }, "Loading…"));
+    const res = await api("GET", "/api/users/paths");
+    const paths = res.ok && Array.isArray(res.data) ? res.data : [];
+    if (!paths.length) {
+      pathSelect.replaceChildren(el("option", { value: "" }, res.ok ? "No OUs configured" : "Failed to load OUs"));
+      renderMessage(res.ok ? "No OUs are configured." : res.data.message);
+      return;
     }
-}
+    pathSelect.replaceChildren(...paths.map((p) => el("option", { value: p }, p)));
+    const wanted = params.get("path");
+    if (wanted && paths.includes(wanted)) pathSelect.value = wanted;
+    if (params.has("q")) filterInput.value = params.get("q");
+    await loadUsers();
+  }
 
-async function loadUsers() {
-    const pathEl = document.getElementById('um-adpath');
-    if (!pathEl) return;
-    const path = pathEl.value;
-    const tbody = document.getElementById('user-list');
-    if (!path || !tbody) return;
-
-    tbody.innerHTML = '<tr><td colspan="5" class="loading">Loading users...</td></tr>';
-    try {
-        const res = await fetch(`/api/users?adPath=${encodeURIComponent(path)}`);
-        if (res.status === 401) {
-            window.location.href = '/login.html';
-            return;
-        }
-        if (!res.ok) throw new Error('Failed to load users');
-        allUsers = await res.json();
-        renderUsers();
-    } catch (e) {
-        tbody.innerHTML = '<tr><td colspan="5" class="loading">Failed to load users</td></tr>';
-        showStatus('Failed to load users', true);
+  async function loadUsers() {
+    const path = pathSelect.value;
+    if (!path) return;
+    renderMessage("Loading users…");
+    const res = await api("GET", `/api/users?adPath=${encodeURIComponent(path)}`);
+    if (!res.ok) {
+      users = [];
+      renderMessage("Failed to load users.");
+      showStatus(res.data.message, true);
+      return;
     }
-}
+    users = res.data || [];
+    render();
+  }
 
-function renderUsers() {
-    const searchInput = document.getElementById('search');
-    if (!searchInput) return;
-    const search = searchInput.value.toLowerCase();
-    let filtered = allUsers.filter(u => 
-        (u.userLoginName || '').toLowerCase().includes(search) ||
-        (u.firstName || '').toLowerCase().includes(search) ||
-        (u.lastName || '').toLowerCase().includes(search)
-    );
+  function renderMessage(message) {
+    countEl.textContent = "";
+    tbody.replaceChildren(emptyRow(4, message));
+  }
 
-    filtered.sort((a, b) => {
-        let valA = a[userSort.field] || '';
-        let valB = b[userSort.field] || '';
-        return userSort.asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
-    });
+  function render() {
+    const q = filterInput.value.trim().toLowerCase();
+    const filtered = users.filter((u) =>
+      [u.userLoginName, u.firstName, u.lastName].some((v) => (v || "").toLowerCase().includes(q)));
+    const rows = sortRows(filtered, sort);
 
-    const countEl = document.getElementById('userCount');
-    if (countEl) {
-        countEl.textContent = `Showing ${filtered.length} of ${allUsers.length} users`;
-    }
+    countEl.textContent = q ? `${rows.length} of ${users.length}` : `${users.length}`;
 
-    document.querySelectorAll('.sort-arrow').forEach(el => el.textContent = '');
-    const arrow = document.getElementById(`sort-${userSort.field}`);
-    if (arrow) arrow.textContent = userSort.asc ? '▲' : '▼';
-
-    const tbody = document.getElementById('user-list');
-    if (!tbody) return;
-    if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="loading">No users found</td></tr>';
-        return;
+    if (!rows.length) {
+      tbody.replaceChildren(emptyRow(4, users.length ? "No users match the filter." : "No users in this OU."));
+      return;
     }
 
-    tbody.innerHTML = filtered.map((u, i) => `
-        <tr>
-            <td>${i + 1}</td>
-            <td>${escapeHtml(u.userLoginName)}</td>
-            <td>${escapeHtml(u.firstName)}</td>
-            <td>${escapeHtml(u.lastName)}</td>
-            <td>
-                <div class="action-buttons">
-                    <button class="secondary" onclick="openPasswordModal('${escapeHtml(u.userLoginName)}')">Password</button>
-                    <button class="primary" onclick="openGroupModal('${escapeHtml(u.userLoginName)}')">Groups</button>
-                    <button class="danger" onclick="removeUserByLogin('${escapeHtml(u.userLoginName)}')">Delete</button>
-                </div>
-            </td>
-        </tr>
-    `).join('');
-}
+    tbody.replaceChildren(...rows.map((u) => el("tr", null,
+      el("td", null, u.userLoginName),
+      el("td", null, u.firstName || ""),
+      el("td", null, u.lastName || ""),
+      el("td", { className: "actions" },
+        iconButton("key", `Change password for ${u.userLoginName}`, () => openPassword(u.userLoginName)),
+        iconButton("groups", `Groups for ${u.userLoginName}`, () => openGroups(u.userLoginName)),
+        iconButton("delete", `Delete ${u.userLoginName}`, () => removeUser(u.userLoginName), "danger")))));
+  }
 
-function sortUsers(field) {
-    if (userSort.field === field) {
-        userSort.asc = !userSort.asc;
-    } else {
-        userSort.field = field;
-        userSort.asc = true;
+  // ---------- Groups list (for both pickers) ----------
+
+  async function loadGroups() {
+    const res = await api("GET", "/api/users/groups");
+    if (!res.ok) {
+      showStatus(res.data.message || "Failed to load groups.", true);
+      return;
     }
-    renderUsers();
-}
-
-function filterUsers() {
-    renderUsers();
-}
-
-async function createUser() {
-    const login = document.getElementById('um-login').value.trim();
-    const first = document.getElementById('um-first').value.trim();
-    const last = document.getElementById('um-last').value.trim();
-    const pass = document.getElementById('um-pass').value;
-
-    if (!login || !first || !last || !pass) {
-        showStatus('All fields are required', true);
-        return;
+    const names = (res.data || []).map((g) => g.groupName).sort((a, b) => a.localeCompare(b));
+    for (const select of [newUserGroupSelect, memberGroupSelect]) {
+      select.replaceChildren(el("option", { value: "" }, "Select a group…"), ...names.map((n) => el("option", { value: n }, n)));
     }
+  }
 
-    try {
-        const res = await fetch('/api/users', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'X-XSRF-TOKEN': sessionStorage.getItem('csrf') || ''
-            },
-            body: JSON.stringify({ 
-                userLoginName: login, 
-                firstName: first, 
-                lastName: last, 
-                password: pass, 
-                adPath: document.getElementById('um-adpath').value,
-                groups: selectedGroupsForNewUser
-            })
-        });
-        let data;
-        try {
-            data = await res.json();
-        } catch (jsonErr) {
-            data = { message: 'Unexpected server response' };
-        }
-        if (res.ok) {
-            showStatus(data.message, false);
-            document.getElementById('um-login').value = '';
-            document.getElementById('um-first').value = '';
-            document.getElementById('um-last').value = '';
-            document.getElementById('um-pass').value = '';
-            selectedGroupsForNewUser = [];
-            updateSelectedGroupsUI();
-            loadUsers();
-        } else {
-            showStatus(data.message || `Error creating user (Status: ${res.status})`, true);
-        }
-    } catch (e) {
-        console.error('Create user error:', e);
-        showStatus('Network error', true);
+  // ---------- Create user ----------
+
+  function renderNewUserGroups() {
+    newUserGroupsList.replaceChildren(...newUserGroups.map((g) => el("li", { className: "chip" },
+      g,
+      iconButton("close", `Remove ${g}`, () => {
+        newUserGroups = newUserGroups.filter((x) => x !== g);
+        renderNewUserGroups();
+      }))));
+  }
+
+  document.querySelector("[data-add-group]").addEventListener("click", () => {
+    const group = newUserGroupSelect.value;
+    if (group && !newUserGroups.includes(group)) {
+      newUserGroups.push(group);
+      renderNewUserGroups();
     }
-}
+    newUserGroupSelect.value = "";
+  });
 
-function addGroupToNewUser() {
-    const select = document.getElementById('um-group-select');
-    const group = select.value;
-    if (group && !selectedGroupsForNewUser.includes(group)) {
-        selectedGroupsForNewUser.push(group);
-        updateSelectedGroupsUI();
-    }
-    select.value = '';
-}
-
-function removeGroupFromNewUser(group) {
-    selectedGroupsForNewUser = selectedGroupsForNewUser.filter(g => g !== group);
-    updateSelectedGroupsUI();
-}
-
-function updateSelectedGroupsUI() {
-    const container = document.getElementById('selected-groups-list');
-    if (!container) return;
-    container.innerHTML = selectedGroupsForNewUser.map(g => `
-        <span class="group-tag">${escapeHtml(g)} <span class="remove" onclick="removeGroupFromNewUser('${escapeHtml(g)}')">&times;</span></span>
-    `).join('');
-}
-
-async function removeUserByLogin(login) {
-    if (!login) return;
-    openConfirmModal('Delete User', `Are you sure you want to delete user ${login}?`, async () => {
-        try {
-            const res = await fetch('/api/users', {
-                method: 'DELETE',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'X-XSRF-TOKEN': sessionStorage.getItem('csrf') || ''
-                },
-                body: JSON.stringify({ userLoginName: login })
-            });
-            let data;
-            try {
-                data = await res.json();
-            } catch (jsonErr) {
-                data = { message: 'Unexpected server response' };
-            }
-            if (res.ok) {
-                showStatus(data.message, false);
-                loadUsers();
-            } else {
-                showStatus(data.message || `Error removing user (Status: ${res.status})`, true);
-            }
-        } catch (e) {
-            console.error('Remove user error:', e);
-            showStatus('Network error', true);
-        }
-    });
-}
-
-function openPasswordModal(login) {
-    const userEl = document.getElementById('pw-target-user');
-    if (userEl) userEl.textContent = login;
-    document.getElementById('pw-new-pass').value = '';
-    document.getElementById('pw-confirm-pass').value = '';
-    document.getElementById('passwordModal').style.display = 'block';
-}
-
-function openGroupModal(login) {
-    const userEl = document.getElementById('gm-target-user');
-    if (userEl) userEl.textContent = login;
-    document.getElementById('groupModal').style.display = 'block';
-    loadUserGroups(login);
-}
-
-async function loadUserGroups(login) {
-    const tbody = document.getElementById('gm-current-groups-body');
-    if (!tbody) return;
-    tbody.innerHTML = '<tr><td>Loading...</td></tr>';
-    try {
-        const res = await fetch(`/api/users/groups/${encodeURIComponent(login)}`);
-        if (res.status === 401) { window.location.href = '/login.html'; return; }
-        if (!res.ok) throw new Error('Failed to load user groups');
-        const groups = await res.json();
-        renderUserGroups(login, groups);
-    } catch (e) {
-        tbody.innerHTML = '<tr><td class="error">Failed to load groups</td></tr>';
-    }
-}
-
-function renderUserGroups(login, groups) {
-    const tbody = document.getElementById('gm-current-groups-body');
-    if (!tbody) return;
-    if (!groups || groups.length === 0) {
-        tbody.innerHTML = '<tr><td>Not a member of any groups.</td></tr>';
-        return;
-    }
-    tbody.innerHTML = groups.map(g => `
-        <tr>
-            <td>${escapeHtml(g)}</td>
-            <td style="text-align: right;">
-                <button class="danger" style="padding: 4px 8px; font-size: 12px;" 
-                        onclick="submitRemoveFromGroup('${escapeHtml(login)}', '${escapeHtml(g)}')">Delete</button>
-            </td>
-        </tr>
-    `).join('');
-}
-
-async function submitChangePassword() {
-    const loginEl = document.getElementById('pw-target-user');
-    if (!loginEl) return;
-    const login = loginEl.textContent;
-    const pass = document.getElementById('pw-new-pass').value;
-    const confirm = document.getElementById('pw-confirm-pass').value;
-
-    if (!pass) {
-        showStatus('New password required', true);
-        return;
+  createForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = createForm.elements;
+    const body = {
+      userLoginName: f.login.value.trim(),
+      firstName: f.first.value.trim(),
+      lastName: f.last.value.trim(),
+      password: f.password.value,
+      adPath: pathSelect.value,
+      groups: newUserGroups,
+    };
+    if (!body.userLoginName || !body.firstName || !body.lastName || !body.password) {
+      return showStatus("Fill in login name, password, first name and last name.", true);
     }
 
-    if (pass !== confirm) {
-        showStatus('Passwords do not match', true);
-        return;
+    const res = await api("POST", "/api/users", body);
+    if (!res.ok) return showStatus(res.data.message || "Could not create the user.", true);
+    showStatus(res.data.message);
+    createForm.reset();
+    newUserGroups = [];
+    renderNewUserGroups();
+    loadUsers();
+  });
+
+  // ---------- Delete ----------
+
+  async function removeUser(login) {
+    const ok = await confirmAction("Delete user", `Delete the user ${login}? This can't be undone.`, "Delete");
+    if (!ok) return;
+    const res = await api("DELETE", "/api/users", { userLoginName: login });
+    if (!res.ok) return showStatus(res.data.message || "Could not delete the user.", true);
+    showStatus(res.data.message);
+    loadUsers();
+  }
+
+  // ---------- Change password ----------
+
+  function openPassword(login) {
+    passwordUser = login;
+    document.querySelector("[data-password-user]").textContent = login;
+    passwordForm.reset();
+    passwordError.textContent = "";
+    openDialog("password-dialog");
+    passwordForm.elements.password.focus();
+  }
+
+  passwordForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const password = passwordForm.elements.password.value;
+    if (!password) {
+      passwordError.textContent = "Enter a new password.";
+      return;
     }
-
-    try {
-        const res = await fetch('/api/users/change-password', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'X-XSRF-TOKEN': sessionStorage.getItem('csrf') || ''
-            },
-            body: JSON.stringify({ userLoginName: login, newPassword: pass })
-        });
-        let data;
-        try {
-            data = await res.json();
-        } catch (jsonErr) {
-            data = { message: 'Unexpected server response' };
-        }
-        if (res.ok) {
-            showStatus(data.message, false);
-            closeModal('passwordModal');
-        } else {
-            showStatus(data.message || `Error changing password (Status: ${res.status})`, true);
-        }
-    } catch (e) {
-        console.error('Change password error:', e);
-        showStatus('Network error', true);
+    if (password !== passwordForm.elements.confirm.value) {
+      passwordError.textContent = "The passwords don't match.";
+      passwordForm.elements.confirm.select();
+      return;
     }
-}
-
-async function submitAddToGroup() {
-    const loginEl = document.getElementById('gm-target-user');
-    if (!loginEl) return;
-    const login = loginEl.textContent;
-    const group = document.getElementById('gm-group-select').value;
-
-    if (!group) {
-        showStatus('Please select a group', true);
-        return;
+    passwordError.textContent = "";
+    const res = await api("POST", "/api/users/change-password", { userLoginName: passwordUser, newPassword: password });
+    if (!res.ok) {
+      passwordError.textContent = res.data.message || "Could not change the password.";
+      return;
     }
+    closeDialog("password-dialog");
+    showStatus(res.data.message);
+  });
 
-    try {
-        const res = await fetch('/api/users/add-to-group', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'X-XSRF-TOKEN': sessionStorage.getItem('csrf') || ''
-            },
-            body: JSON.stringify({ userLoginName: login, groupName: group })
-        });
-        let data;
-        try {
-            data = await res.json();
-        } catch (jsonErr) {
-            data = { message: 'Unexpected server response' };
-        }
-        if (res.ok) {
-            showStatus(data.message, false);
-            loadUserGroups(login);
-        } else {
-            showStatus(data.message || `Error adding to group (Status: ${res.status})`, true);
-        }
-    } catch (e) {
-        console.error('Add to group error:', e);
-        showStatus('Network error', true);
+  // ---------- Group memberships ----------
+
+  function openGroups(login) {
+    groupsUser = login;
+    document.querySelector("[data-groups-user]").textContent = login;
+    memberGroupSelect.value = "";
+    openDialog("groups-dialog");
+    loadMemberships();
+  }
+
+  async function loadMemberships() {
+    memberList.replaceChildren(el("li", { className: "muted" }, "Loading…"));
+    const res = await api("GET", `/api/users/groups/${encodeURIComponent(groupsUser)}`);
+    if (!res.ok) {
+      memberList.replaceChildren(el("li", { className: "muted" }, "Failed to load groups."));
+      return;
     }
-}
-
-async function submitRemoveFromGroup(login, group) {
-    openConfirmModal('Delete from Group', `Are you sure you want to delete ${login} from ${group}?`, async () => {
-        try {
-            const res = await fetch('/api/users/remove-from-group', {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'X-XSRF-TOKEN': sessionStorage.getItem('csrf') || ''
-                },
-                body: JSON.stringify({ userLoginName: login, groupName: group })
-            });
-            let data;
-            try {
-                data = await res.json();
-            } catch (jsonErr) {
-                data = { message: 'Unexpected server response' };
-            }
-            if (res.ok) {
-                showStatus(data.message, false);
-                loadUserGroups(login);
-            } else {
-                showStatus(data.message || `Error removing from group (Status: ${res.status})`, true);
-            }
-        } catch (e) {
-            console.error('Remove from group error:', e);
-            showStatus('Network error', true);
-        }
-    });
-}
-
-async function loadGroups() {
-    try {
-        const res = await fetch('/api/users/groups');
-        if (res.status === 401) {
-            window.location.href = '/login.html';
-            return;
-        }
-        if (res.ok) {
-            const groups = await res.json();
-            const gmSelect = document.getElementById('gm-group-select');
-            const umSelect = document.getElementById('um-group-select');
-            if (!gmSelect || !umSelect) return;
-            const options = (groups || []).map(g => `<option value="${escapeHtml(g.groupName)}">${escapeHtml(g.groupName)}</option>`).join('');
-            gmSelect.innerHTML = '<option value="">Select group...</option>' + options;
-            umSelect.innerHTML = '<option value="">Select group...</option>' + options;
-        }
-    } catch (e) {
-        console.error('Failed to load groups', e);
+    const groups = (res.data || []).slice().sort((a, b) => a.localeCompare(b));
+    if (!groups.length) {
+      memberList.replaceChildren(el("li", { className: "muted" }, "Not a member of any groups."));
+      return;
     }
-}
+    memberList.replaceChildren(...groups.map((g) => el("li", null,
+      icon("group"),
+      el("span", null, g),
+      iconButton("remove_circle", `Remove from ${g}`, () => removeMembership(g), "small danger"))));
+  }
 
-document.addEventListener('DOMContentLoaded', () => {
-    loadUserPaths();
-    loadGroups();
-});
+  addMemberForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const group = memberGroupSelect.value;
+    if (!group) return showStatus("Select a group.", true);
+    const res = await api("POST", "/api/users/add-to-group", { userLoginName: groupsUser, groupName: group });
+    if (!res.ok) return showStatus(res.data.message || "Could not add to the group.", true);
+    showStatus(res.data.message);
+    memberGroupSelect.value = "";
+    loadMemberships();
+  });
+
+  async function removeMembership(group) {
+    const res = await api("POST", "/api/users/remove-from-group", { userLoginName: groupsUser, groupName: group });
+    if (!res.ok) return showStatus(res.data.message || "Could not remove from the group.", true);
+    showStatus(res.data.message);
+    loadMemberships();
+  }
+
+  // ---------- Start ----------
+
+  initSortHeaders(sort, render);
+  pathSelect.addEventListener("change", loadUsers);
+  document.querySelector("[data-refresh]").addEventListener("click", loadUsers);
+  filterInput.addEventListener("input", render);
+
+  loadPaths();
+  loadGroups();
+})();

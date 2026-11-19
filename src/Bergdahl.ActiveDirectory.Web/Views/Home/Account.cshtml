@@ -1,0 +1,23 @@
+@using Bergdahl.ActiveDirectory.Core.Models
+@using Microsoft.Extensions.Options
+@inject IOptions<ApplicationSettings> Settings
+@{
+    ViewData["Title"] = "Account";
+    ViewData["ActivePage"] = "Account";
+}
+
+<header class="page-header">
+    <h1>Account</h1>
+    <p>The Active Directory account you are signed in with.</p>
+</header>
+
+<div class="card">
+    <dl class="details">
+        <dt>User name</dt>
+        <dd>@User.Identity?.Name</dd>
+        <dt>Domain</dt>
+        <dd>@Settings.Value.ActiveDirectoryDomain</dd>
+        <dt>DNS server</dt>
+        <dd>@Settings.Value.ServerName</dd>
+    </dl>
+</div>

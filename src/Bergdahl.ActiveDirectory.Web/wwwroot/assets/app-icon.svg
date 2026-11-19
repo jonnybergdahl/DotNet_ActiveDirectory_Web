@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Active Directory Web: a directory tree (one parent, three children) on brand blue -->
+  <rect width="64" height="64" rx="14" fill="#0093dd"/>
+  <g fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 24v8M16 40v-8h32v8M32 32v8"/>
+  </g>
+  <g fill="#ffffff">
+    <rect x="24" y="12" width="16" height="12" rx="3"/>
+    <rect x="9" y="40" width="14" height="11" rx="3"/>
+    <rect x="25" y="40" width="14" height="11" rx="3"/>
+    <rect x="41" y="40" width="14" height="11" rx="3"/>
+  </g>
+</svg>
