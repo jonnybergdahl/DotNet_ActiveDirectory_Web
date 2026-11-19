@@ -1,5 +1,7 @@
 // Theme handling: "system" (follow the OS), "light" or "dark".
 // Loaded in <head> without defer so the saved theme is applied before first paint.
+// While signed out (<html data-auth="out">) the page follows the OS: the saved theme
+// is the signed-in user's choice. Load it after js/auth.js so data-auth is already set.
 
 (function () {
   const STORAGE_KEY = "theme";
@@ -24,6 +26,10 @@
     }
   }
 
+  function current() {
+    return document.documentElement.dataset.auth === "out" ? "system" : read();
+  }
+
   function apply(mode) {
     const root = document.documentElement;
     if (mode === "system") {
@@ -39,10 +45,13 @@
     }
   }
 
-  apply(read());
+  apply(current());
+
+  // Sign-in and logout switch between the saved theme and the OS setting.
+  document.addEventListener("auth-change", () => apply(current()));
 
   document.addEventListener("DOMContentLoaded", () => {
-    apply(read());
+    apply(current());
     const button = document.querySelector("[data-theme-toggle]");
     if (!button) return;
     button.addEventListener("click", () => {
