@@ -76,12 +76,17 @@ Before deploying, ensure the target server has the following installed:
 *   **Restart IIS**: After installing the hosting bundle, run `iisreset` in an admin command prompt to ensure the new module is recognized.
 
 ### 2. Prepare the Application (Publish)
-You need to create a "Release" build of the application. Run the following command from the project root:
+You need to create a "Release" build of the application. Run the publish script from the project root:
 
 ```powershell
-dotnet publish src\Bergdahl.ActiveDirectory.Web\Bergdahl.ActiveDirectory.Web.csproj -c Release -o C:\inetpub\ad-web
+.\publish-windows.cmd
 ```
-*(Replace `C:\inetpub\ad-web` with your desired destination folder)*.
+
+It builds a framework-dependent `win-x64` Release build into `./publish`. Copy that folder to the server, for example to `C:\inetpub\ad-web`. To publish straight to a folder instead, run:
+
+```powershell
+dotnet publish src\Bergdahl.ActiveDirectory.Web\Bergdahl.ActiveDirectory.Web.csproj -c Release -r win-x64 --self-contained false -o C:\inetpub\ad-web
+```
 
 ### 3. Setup IIS Site
 1.  Open **IIS Manager**.

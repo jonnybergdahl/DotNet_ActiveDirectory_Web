@@ -26,5 +26,9 @@ appsettings.Development.json
 
 ## --- Publish output / scratch files ---
 ad-web/
+publish/
 publish_test/
 .output.txt
+
+# Claude
+.claude/
